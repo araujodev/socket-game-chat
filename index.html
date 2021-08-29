@@ -1,0 +1,366 @@
+<html>
+
+    <head>
+        <title>Socket.IO Chat Game</title>
+        <style>
+            #screen{
+                height: auto;
+                width: 700px;
+                box-shadow: 9px 9px 5px #b3b3b3;
+            }
+
+            #game {
+                border: 1px solid #333;
+                width: 700px;
+                height: 700px;
+            }
+            .cell{
+                width: 50px;
+                height: 50px;
+                background: url('/images/grass2.png') no-repeat;
+                float: left;
+            }
+            .player{
+                width: 50px;
+                height: 50px;
+                float: left;
+                background:url('/images/player.gif');
+                background-repeat: no-repeat;
+                background-size: 50px 50px;
+                position: absolute;
+            }
+
+            header{
+                width: 690px;
+                padding: 5px;
+                text-align: center;
+                text-transform: uppercase;
+                color: #868686;
+                font-family: Arial, Helvetica, sans-serif;
+                background-color: rgb(74, 74, 74);
+                border-left: 2px solid #000;
+            }
+
+            #messenger{
+                width: 680px;
+                padding: 10px;
+                background-color: rgb(74, 74, 74);
+                border-left: 2px solid #000;
+            }
+
+            #messenger form{
+                margin-block-end: 0rem;
+            }
+
+            .msg-input{
+                padding: 10px;
+                width: 75%;
+                outline: none;
+                border: 1px solid #2d2d2d;
+                color: #2d2d2d;
+                font-size: 20px;
+                background: #6f6f6f;
+                box-shadow: 4px 3px 0px #353535;
+            }
+
+            .msg-input::placeholder {
+                color: #2d2d2d90;
+                opacity: 0.8; /* Firefox */
+            }
+
+            .btn-submit{
+                margin-left: 15px;
+                width: 21%;
+                font-size: 20px;
+                padding: 8px;
+                background: #2d2d2d;
+                box-shadow: 4px 3px 0px #232323;
+                color: #949494;
+                border: 1px solid #676767;
+            }
+
+            #play{
+                position: fixed;
+                top: -20px;
+                left: 40px;
+                background: #7b7b7b;
+                border-radius: 10px;
+                padding-left: 10px;
+                padding-right: 10px;
+                padding-bottom: 10px;
+                padding-top: 30px;
+                border: 1px solid #1d1d1d;
+                box-shadow: 3px 3px 0px #292929;
+            }
+
+            .send-player-message {
+                position: absolute;
+                top: -100px;
+                width: 120px;
+                height: 85px;
+                line-height: 20px;
+                padding: 10px;
+                background: #fff;
+                word-wrap: break-word;
+            }
+            
+            .send-player-message {
+                position: absolute;
+                top: -105px;
+                width: 120px;
+                max-height: 82px;
+                height: auto;
+                line-height: 20px;
+                padding: 10px;
+                background: #fff;
+                font-size: 13px;
+                border-radius: 10px;
+                font-family: Arial, Helvetica, sans-serif;
+                box-shadow: 5px 5px 10px #0e2d03;
+            }
+
+            .send-player-message-left:before {
+                content: "";
+                width: 0px;
+                height: 0px;
+                position: absolute;
+                border-left: 18px solid #fff;
+                border-right: 2px solid transparent;
+                border-top: 6px solid #fff;
+                border-bottom: 15px solid transparent;
+                left: 40px;
+                bottom: -15px;
+            }
+
+        </style>
+    </head>
+    <body>
+        <a href="#" id="play"><img src="/images/audio.png" alt="PlayAudio"></a>
+        <div id="screen">
+            <header>
+                <h3>Socket.IO Chat Game</h3>
+            </header>
+            <div id="game"></div>
+            <div id="messenger">
+                <form id="messsage-form">
+                    <input maxlength="50" type="text" placeholder="Olá seja bem vindo, deixe sua msg." name="message" id="message-input" class="msg-input">
+                    <input type="submit" value="ENVIAR" class="btn-submit">
+                </form>
+            </div>
+        </div>
+        <!-- <audio style="display: none;" id="song-player" src="/songs/SuperMarioBrosMedley.mp3" autoplay loop controls></audio> -->
+        <script
+			  src="https://code.jquery.com/jquery-3.6.0.js"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <script>
+            var socket = io();
+            let socketSessionId;    
+
+            socket.on('connect', () => {
+                socketSessionId = socket.id;
+                bornPlayer();
+                removeDefaultMsg();
+            });
+            
+            let maxWidthCells = 14;
+            let maxHeightCells = 14;
+
+            $(document).ready(function(){
+
+                $("#play").click(function(){
+                    var audioElement = document.createElement('audio');
+                    audioElement.setAttribute('src', 'http://10.26.2.107:3000/songs/SuperMarioBrosMedley.mp3');
+                    audioElement.play();
+                });
+
+                drawMatrix();
+                mapKey();
+
+                sendPlayerMessage();
+
+                socket.on('newPosition', (msg) => {
+                    if(msg.client !== socketSessionId){
+                        checkIfPlayerExists(msg.client);
+
+                        if(msg.direction === 'up'){
+                            slideUp(msg.client, msg.position, false);
+                        }
+                        if(msg.direction === 'down'){
+                            slideDown(msg.client, msg.position, false);
+                        }
+                        if(msg.direction === 'left'){
+                            slideLeft(msg.client, msg.position, false);
+                        }
+                        if(msg.direction === 'right'){
+                            slideRight(msg.client, msg.position, false);
+                        }
+                    }
+                });
+
+                socket.on('newBornPlayer', function(msg) {
+                    if(msg.client !== socketSessionId)
+                        otherBornPlayer(msg.client);
+                });
+
+                socket.on('broadcastMessage', function(msg) {
+                    $($("#game").find(".cell").find("*[data-player='"+msg.client+"']")[0])
+                        .append("<div class='send-player-message send-player-message-left'>"+msg.msg+"</div>")
+
+                    setTimeout(function(){
+                        $($("#game").find(".cell").find("*[data-player='"+msg.client+"']").find('.send-player-message')).fadeOut('slow');
+                    }, 3500);
+                });
+            });
+
+            function removeDefaultMsg(){
+                setTimeout(function(){
+                    $($("#game").find(".cell").find("*[data-player='"+socketSessionId+"']").find('.send-player-message')[0]).fadeOut('slow');
+                }, 3000);
+            }
+
+            function sendPlayerMessage(){
+                $("#messsage-form").submit(function(e){
+                    e.preventDefault();
+                    let msg = $("#message-input").val();
+                    socket.emit('sendMessage', msg);
+                    $("#message-input").val('');
+                });
+            }
+
+            function drawMatrix(){
+                for (let line = 0; line < maxWidthCells; line++ ) {
+
+                    for (let column = 0; column < maxHeightCells; column++ ) {
+                        $("#game").append("<div data-line='"+line+"' data-column='"+column+"' class='cell'></div>");
+                    }
+                }
+                $("#game").focus();
+            }
+
+            function bornPlayer(){
+                let startPosition = $(".cell").eq(76);
+                let player = startPosition.append("<div data-player='"+socketSessionId+"' class='player'><div class='send-player-message send-player-message-left'>Olá Trader. Use as setas do telado para navegar</div></div>");
+                socket.emit('bornPlayer', [5,6]);
+            }
+
+            function otherBornPlayer(clientId){
+                let startPosition = $(".cell").eq(76);
+                let player = startPosition.append("<div data-player='"+clientId+"' class='player'></div>");
+            }
+
+            function mapKey(){
+                document.onkeydown = function (e) {
+                    e = e || window.event;
+
+                    if (e.keyCode == '38') {
+                        slideUp();
+                    }
+                    else if (e.keyCode == '40') {
+                        slideDown();
+                    }
+                    else if (e.keyCode == '37') {
+                        slideLeft();
+                    }
+                    else if (e.keyCode == '39') {
+                        slideRight();
+                    }
+                };
+            }
+
+            function slideRight(client = socketSessionId, position = [], sendEventToMove = true){
+                let playerParent = $("#game").find(".cell").find("*[data-player='"+client+"']")[0].parentElement;
+                let currentLine = position[0] ?? $(playerParent).data('line');
+                let currentColumn = position[1] ?? $(playerParent).data('column')+1;
+
+                if ((currentColumn) <= (maxWidthCells-1)){
+                    
+                    let nextCell = $("*[data-line='"+(currentLine)+"'][data-column='"+(currentColumn)+"']");    
+
+                    let backupMessages = $($("#game").find(".cell").find("*[data-player='"+client+"']").find('.send-player-message')).clone();
+
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).remove();
+                    $(nextCell).append("<div data-player='"+client+"' class='player'></div>");
+                    
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).html(backupMessages);
+
+                    if(sendEventToMove){
+                        socket.emit('move', {position: [currentLine,currentColumn], direction: 'right'});
+                    }
+                }
+            }
+
+            function slideLeft(client = socketSessionId, position = [], sendEventToMove = true){
+                let playerParent = $("#game").find(".cell").find("*[data-player='"+client+"']")[0].parentElement;
+                let currentLine = position[0] ?? $(playerParent).data('line');
+                let currentColumn = position[1] ?? $(playerParent).data('column')-1;
+                
+                if ((currentColumn) >= 0){
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).remove();
+                    
+                    let nextCell = $("*[data-line='"+(currentLine)+"'][data-column='"+(currentColumn)+"']");    
+
+                    let backupMessages = $($("#game").find(".cell").find("*[data-player='"+client+"']").find('.send-player-message')).clone();
+
+                    $(nextCell).append("<div data-player='"+client+"' class='player'></div>");
+
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).html(backupMessages);
+
+                    if(sendEventToMove){
+                        socket.emit('move', {position: [currentLine,currentColumn], direction: 'left'});
+                    }
+                }
+            }
+
+            function slideDown(client = socketSessionId, position = [], sendEventToMove = true){
+                let playerParent = $("#game").find(".cell").find("*[data-player='"+client+"']")[0].parentElement;
+                let currentLine = position[0] ?? $(playerParent).data('line')+1;
+                let currentColumn = position[1] ?? $(playerParent).data('column');
+
+                if ((currentLine) <= (maxHeightCells-1)){
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).remove();
+                    
+                    let nextCell = $("*[data-line='"+(currentLine)+"'][data-column='"+(currentColumn)+"']");    
+
+                    let backupMessages = $($("#game").find(".cell").find("*[data-player='"+client+"']").find('.send-player-message')).clone();
+
+                    $(nextCell).append("<div data-player='"+client+"' class='player'></div>");
+
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).html(backupMessages);
+
+                    if(sendEventToMove){
+                        socket.emit('move', {position: [currentLine,currentColumn], direction: 'down'});
+                    }
+                }
+            }
+
+            function slideUp(client = socketSessionId, position = [], sendEventToMove = true){
+                let playerParent = $("#game").find(".cell").find("*[data-player='"+client+"']")[0].parentElement;
+                let currentLine = position[0] ?? $(playerParent).data('line')-1;
+                let currentColumn = position[1] ?? $(playerParent).data('column');
+                
+                if ((currentLine) >= 0){
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).remove();
+                    
+                    let nextCell = $("*[data-line='"+(currentLine)+"'][data-column='"+(currentColumn)+"']");    
+
+                    let backupMessages = $($("#game").find(".cell").find("*[data-player='"+client+"']").find('.send-player-message')).clone();
+
+                    $(nextCell).append("<div data-player='"+client+"' class='player'></div>");
+
+                    $($("#game").find(".cell").find("*[data-player='"+client+"']")[0]).html(backupMessages);
+
+                    if(sendEventToMove){
+                        socket.emit('move', {position: [currentLine,currentColumn], direction: 'up'});
+                    }
+                }
+            }
+
+            function checkIfPlayerExists(client){
+                let player = $("#game").find(".cell").find("*[data-player='"+client+"']")[0];
+                if(player === undefined){
+                    otherBornPlayer(client);
+                }
+            }
+        </script>
+    </body>
+</html>

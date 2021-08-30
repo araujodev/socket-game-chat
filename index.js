@@ -25,7 +25,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('sendMessage', (msg) => {
-      io.emit('broadcastMessage', { client: socket.id, msg: msg });
+      io.emit('broadcastMessage', { client: socket.id, msg: msg.msg, playerName: msg.playerName });
     });
   });
 
